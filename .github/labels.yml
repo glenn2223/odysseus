@@ -1,0 +1,90 @@
+# Odysseus label definitions
+# Import with: npx github-label-sync --access-token <token> --labels .github/labels.yml pewdiepie-archdaemon/odysseus
+#
+# Labels marked [workflow] are created automatically by GitHub Actions, but
+# defining them here keeps colours/descriptions in sync if you ever reset the
+# repo labels.
+
+# ── Issue / PR state (managed by bots) ───────────────────────────────────────
+
+- name: ready for review
+  color: "0e8a16"
+  description: Template complete — ready for maintainer triage  # [workflow] issue-template-check, pr-template-check
+
+- name: needs info
+  color: e4e669
+  description: Template incomplete or missing — please update  # [workflow] issue-template-check
+
+- name: needs work
+  color: d93f0b
+  description: PR template incomplete — action required before review  # [workflow] pr-template-check
+
+- name: ci passed
+  color: "0075ca"
+  description: All post-approval CI checks passed — safe to merge  # [workflow] post-approval-ci
+
+- name: ci failed
+  color: b60205
+  description: Post-approval CI checks failed — do not merge  # [workflow] post-approval-ci
+
+# ── Classification ────────────────────────────────────────────────────────────
+
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+
+- name: enhancement
+  color: a2eeef
+  description: New feature or request
+
+- name: documentation
+  color: "0075ca"
+  description: Improvements or additions to documentation
+
+- name: security
+  color: b60205
+  description: Security-related issue or PR
+
+- name: support
+  color: "0e8a16"
+  description: Installation, setup, or usage help request
+
+- name: duplicate
+  color: cfd3d7
+  description: This issue or pull request already exists
+
+- name: wontfix
+  color: ffffff
+  description: This will not be worked on
+
+# ── Triage ────────────────────────────────────────────────────────────────────
+
+- name: needs-triage
+  color: fef2c0
+  description: Needs maintainer to categorize
+
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers
+
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+
+# ── Platform ──────────────────────────────────────────────────────────────────
+
+- name: windows
+  color: 5319e7
+  description: Windows-specific issue
+
+- name: macos
+  color: 5319e7
+  description: macOS-specific issue
+
+- name: linux
+  color: 5319e7
+  description: Linux-specific issue
+
+- name: docker
+  color: 1d76db
+  description: Docker / compose related
