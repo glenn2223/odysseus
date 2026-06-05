@@ -492,12 +492,31 @@ def _detect_windows():
         "  } "
         "} catch {}; "
         "if (-not $r.gpu_name) { "
+        # AMD: filter by vendor name, sort by AdapterRAM descending so the dGPU
+        # wins over an iGPU on dual-GPU systems (e.g. AM5 + discrete Radeon —
+        # the iGPU sits at a lower PCI bus address and appears first in WMI).
+        "  $amdGpu = Get-CimInstance Win32_VideoController | "
+        "    Where-Object { $_.Name -match 'AMD|Radeon|Ryzen AI' } | "
+        "    Sort-Object AdapterRAM -Descending | "
+        "    Select-Object -First 1; "
+        "  if ($amdGpu) { "
+        "    $r.gpu_name = $amdGpu.Name; "
+        "    $r.gpu_vram_gb = [math]::Round($amdGpu.AdapterRAM / 1073741824, 1); "
+        "    $r.gpu_count = 1; "
+        "    $r.gpu_backend = 'rocm'; "
+        # RDNA3 (RX 7xxx / gfx11xx) and RDNA4 (RX 9xxx / gfx12xx) are in the
+        # ROCm 7.13.0 Windows support matrix. RDNA2 (RX 6xxx / gfx1030) is
+        # Linux-only — the cookbook installer routes RDNA2 to Vulkan instead.
+        "    $r.rdna_gen = if ($amdGpu.Name -match 'RX [79]\\d{3}|Ryzen AI Max') { 3 } else { 2 }; "
+        "  } "
+        "}; "
+        "if (-not $r.gpu_name) { "
         "  $wmiGpu = Get-CimInstance Win32_VideoController | Where-Object { $_.AdapterRAM -gt 0 } | Select-Object -First 1; "
         "  if ($wmiGpu) { "
         "    $r.gpu_name = $wmiGpu.Name; "
         "    $r.gpu_vram_gb = [math]::Round($wmiGpu.AdapterRAM / 1073741824, 1); "
         "    $r.gpu_count = 1; "
-        "    $r.gpu_backend = 'cpu_x86'; "  # WMI doesn't tell us CUDA/ROCm
+        "    $r.gpu_backend = 'cpu_x86'; "
         "  } "
         "}; "
         "$r | ConvertTo-Json -Compress"
@@ -537,6 +556,10 @@ def _detect_windows():
             "gpu_vram_gb": d.get("gpu_vram_gb"),
             "gpu_count": _as_int(d.get("gpu_count"), 0),
             "backend": d.get("gpu_backend", "cpu_x86"),
+            # rdna_gen: 3 = RDNA3/RDNA4 (ROCm Windows-supported, use HIP binary),
+            # 2 = RDNA2 or unrecognised AMD (Linux ROCm only, use Vulkan binary).
+            # Always present; defaults to 2 so non-AMD callers can ignore it safely.
+            "rdna_gen": _as_int(d.get("rdna_gen"), 2),
             "homogeneous": True,
             "gpu_error": None,
             "platform": "windows",
