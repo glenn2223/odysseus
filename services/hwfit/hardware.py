@@ -491,17 +491,30 @@ def _detect_windows():
         "    $r.gpu_backend = 'cuda'; "
         "  } "
         "} catch {}; "
+        # Registry VRAM helper: Win32_VideoController.AdapterRAM is uint32 so it
+        # overflows to ~4 GB on cards with more VRAM. The driver registry key
+        # stores the real 64-bit value. Use registry when it's larger. This also
+        # makes Sort-Object AdapterRAM -Descending reliable for dGPU selection.
+        "$_driverKey = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0*'; "
+        "function _VramGb($ctrl) { "
+        "  $devId = ($ctrl.PNPDeviceID -split '&')[0..1] -join '&'; "
+        "  $reg = Get-ItemProperty -Path $_driverKey -ErrorAction SilentlyContinue | "
+        "    Where-Object { $_.MatchingDeviceId -like \"${devId}*\" } | "
+        "    Select-Object -ExpandProperty 'HardwareInformation.qwMemorySize' -ErrorAction SilentlyContinue -First 1; "
+        "  $wmi = [long]$ctrl.AdapterRAM; "
+        "  $bytes = if ($reg -and [long]$reg -gt $wmi) { [long]$reg } else { $wmi }; "
+        "  return [math]::Round($bytes / 1073741824, 1) "
+        "}; "
         "if (-not $r.gpu_name) { "
-        # AMD: filter by vendor name, sort by AdapterRAM descending so the dGPU
+        # AMD: filter by vendor name, sort by true VRAM descending so the dGPU
         # wins over an iGPU on dual-GPU systems (e.g. AM5 + discrete Radeon —
         # the iGPU sits at a lower PCI bus address and appears first in WMI).
-        "  $amdGpu = Get-CimInstance Win32_VideoController | "
-        "    Where-Object { $_.Name -match 'AMD|Radeon|Ryzen AI' } | "
-        "    Sort-Object AdapterRAM -Descending | "
-        "    Select-Object -First 1; "
+        "  $amdCtrls = Get-CimInstance Win32_VideoController | "
+        "    Where-Object { $_.Name -match 'AMD|Radeon|Ryzen AI' }; "
+        "  $amdGpu = $amdCtrls | Sort-Object { _VramGb $_ } -Descending | Select-Object -First 1; "
         "  if ($amdGpu) { "
         "    $r.gpu_name = $amdGpu.Name; "
-        "    $r.gpu_vram_gb = [math]::Round($amdGpu.AdapterRAM / 1073741824, 1); "
+        "    $r.gpu_vram_gb = _VramGb $amdGpu; "
         "    $r.gpu_count = 1; "
         "    $r.gpu_backend = 'rocm'; "
         # RDNA3 (RX 7xxx / gfx11xx) and RDNA4 (RX 9xxx / gfx12xx) are in the
@@ -514,7 +527,7 @@ def _detect_windows():
         "  $wmiGpu = Get-CimInstance Win32_VideoController | Where-Object { $_.AdapterRAM -gt 0 } | Select-Object -First 1; "
         "  if ($wmiGpu) { "
         "    $r.gpu_name = $wmiGpu.Name; "
-        "    $r.gpu_vram_gb = [math]::Round($wmiGpu.AdapterRAM / 1073741824, 1); "
+        "    $r.gpu_vram_gb = _VramGb $wmiGpu; "
         "    $r.gpu_count = 1; "
         "    $r.gpu_backend = 'cpu_x86'; "
         "  } "
