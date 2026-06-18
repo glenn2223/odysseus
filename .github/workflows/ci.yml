@@ -47,12 +47,16 @@ jobs:
           done
 
   python-tests:
-    name: Python tests (pytest)
-    runs-on: ubuntu-latest
+    name: Python tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     # Informational for now: the suite has known flaky / environment-dependent
     # failures (test isolation + embedding-model assertions). Tracked under the
     # ROADMAP "fresh install smoke tests" item; make this required once green.
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
@@ -61,8 +65,9 @@ jobs:
 
       # Detect whether this PR only touches documentation files.
       # If so, skip the expensive pytest run while still reporting a passing check.
-      - name: Check for docs-only changes
-        id: docs-check
+      - name: Check for docs-only changes (Linux)
+        id: docs-check-linux
+        if: runner.os != 'Windows'
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="${{ github.event.pull_request.base.sha }}"
@@ -71,7 +76,6 @@ jobs:
             BASE="${{ github.event.before }}"
             HEAD="${{ github.sha }}"
           fi
-          # List all changed files; if every file matches docs/markdown patterns, skip pytest.
           changed=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
           non_docs=$(echo "$changed" | grep -Ev '^(docs/|.*\.md$|\.github/[^/]+\.md$)' || true)
           if [ -z "$non_docs" ]; then
@@ -81,14 +85,45 @@ jobs:
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check for docs-only changes (Windows)
+        id: docs-check-windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $BASE = "${{ github.event.pull_request.base.sha }}"
+            $HEAD = "${{ github.event.pull_request.head.sha }}"
+          } else {
+            $BASE = "${{ github.event.before }}"
+            $HEAD = "${{ github.sha }}"
+          }
+          $changed = (git diff --name-only "$BASE" "$HEAD" 2>$null) -join "`n"
+          if (-not $changed) { $changed = (git diff --name-only HEAD~1 HEAD) -join "`n" }
+          $non_docs = ($changed -split "`n") | Where-Object { $_ -notmatch '^(docs/|.*\.md$|\.github/[^/]+\.md$)' }
+          if (-not $non_docs) {
+            "docs_only=true" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+            Write-Host "Docs-only change detected — skipping pytest."
+          } else {
+            "docs_only=false" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+          }
+
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
-        if: steps.docs-check.outputs.docs_only != 'true'
+        if: |
+          steps.docs-check-linux.outputs.docs_only != 'true' &&
+          steps.docs-check-windows.outputs.docs_only != 'true'
         with:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-        if: steps.docs-check.outputs.docs_only != 'true'
-      - run: mkdir -p data  # sqlite DB lives at ./data/app.db
-        if: steps.docs-check.outputs.docs_only != 'true'
+        if: |
+          steps.docs-check-linux.outputs.docs_only != 'true' &&
+          steps.docs-check-windows.outputs.docs_only != 'true'
+      - name: Create data directory
+        if: |
+          steps.docs-check-linux.outputs.docs_only != 'true' &&
+          steps.docs-check-windows.outputs.docs_only != 'true'
+        run: python -c "import os; os.makedirs('data', exist_ok=True)"
       - run: python -m pytest -q
-        if: steps.docs-check.outputs.docs_only != 'true'
+        if: |
+          steps.docs-check-linux.outputs.docs_only != 'true' &&
+          steps.docs-check-windows.outputs.docs_only != 'true'

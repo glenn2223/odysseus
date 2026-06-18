@@ -177,6 +177,7 @@ class TestAppleSiliconDetection:
 
         monkeypatch.setattr(platform_compat.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(platform_compat.platform, "machine", lambda: "arm64")
+        monkeypatch.setattr(platform_compat.os, "name", "posix")
         importlib.reload(platform_compat)
 
         assert platform_compat.IS_APPLE_SILICON is True
@@ -360,14 +361,16 @@ class TestPackageProbeStatus:
     def test_local_user_install_bin_is_added_to_path(self, monkeypatch, tmp_path):
         user_base = tmp_path / "user-base"
         monkeypatch.setattr("site.USER_BASE", str(user_base))
-        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        home = str(tmp_path / "home")
+        monkeypatch.setenv("HOME", home)
+        monkeypatch.setenv("USERPROFILE", home)  # Windows uses USERPROFILE for expanduser("~")
         monkeypatch.setenv("PATH", "/usr/bin")
 
         _prepend_user_install_bins_to_path()
 
-        parts = os.environ["PATH"].split(os.pathsep)
-        assert str(user_base / "bin") in parts
-        assert str(tmp_path / "home" / ".local" / "bin") in parts
+        normed = [os.path.normcase(os.path.normpath(p)) for p in os.environ["PATH"].split(os.pathsep)]
+        assert os.path.normcase(str(user_base / "bin")) in normed
+        assert os.path.normcase(str(tmp_path / "home" / ".local" / "bin")) in normed
 
     def test_remote_package_probe_checks_user_install_bin(self):
         script = _package_probe_script(["vllm"])
